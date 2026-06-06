@@ -195,7 +195,10 @@
     </div>
 
     <script>
-        const API_URL = 'https://script.google.com/macros/s/AKfycbxQh5Q9yVQHBDvozPaCt_l7WTZMZYudjdHeZ8wAhipiQxcM2UaU4elCFi6xg7Miu-LPoQ/exec';
+        // ==========================================
+        // ใส่ URL Web App ที่ได้จาก Google Apps Script ตรงนี้ครับ
+        // ==========================================
+        const API_URL = "https://script.google.com/macros/s/AKfycbxQh5Q9yVQHBDvozPaCt_l7WTZMZYudjdHeZ8wAhipiQxcM2UaU4elCFi6xg7Miu-LPoQ/exec";
 
         let currentUser = null;
         let globalTickets = []; 
@@ -228,6 +231,11 @@
         // ------------------ ระบบ Login ------------------
         async function handleLogin(event) {
             event.preventDefault();
+            
+            if (API_URL.includes('ใส่_URL')) {
+                Swal.fire('แจ้งเตือน', 'กรุณาใส่ URL API ในโค้ด Index.html ก่อน', 'warning');
+                return;
+            }
 
             const btn = document.getElementById('loginBtn');
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> กำลังตรวจสอบ...';
@@ -353,19 +361,17 @@
             document.getElementById('imagePreviewContainer').classList.add('hidden');
         }
 
-        // [BUG FIX] ฟังก์ชันแปลงลิงก์หน้าเว็บให้เป็นลิงก์รูปภาพสายตรง (Direct Link) และเปิด Popup ภายในแอป
+        // [BUG FIX แก้ไขภาพแตก] ใช้ API Thumbnail ของ Google แทน
         function openImagePopup(driveUrl) {
             if (!driveUrl) return;
             
-            // ดึงเฉพาะ ID ของรูปภาพออกมาจากลิงก์
             let directUrl = driveUrl;
             const match = driveUrl.match(/\/d\/(.+?)\//);
             if (match && match[1]) {
-                // แปลงเป็นลิงก์สายตรงเพื่อหลีกเลี่ยงการเด้งเข้าหน้า Login ของ Google
-                directUrl = `https://drive.google.com/uc?export=view&id=${match[1]}`;
+                // ใช้คำสั่ง thumbnail API ของ Google ข้ามข้อจำกัดความปลอดภัย
+                directUrl = `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1000`;
             }
 
-            // แสดงรูปในแอปโดยใช้ SweetAlert ไม่ต้องเปิดแท็บใหม่
             Swal.fire({
                 imageUrl: directUrl,
                 imageAlt: 'ภาพประกอบแจ้งซ่อม',
@@ -520,7 +526,6 @@
                     dateStr = d.toLocaleDateString('th-TH') + ' ' + d.toLocaleTimeString('th-TH').substring(0,5);
                 }
 
-                // [BUG FIX] เปลี่ยนปุ่มให้ทำงานในแอปแทนการเปิดลิงก์ใหม่
                 let imgBtn = '';
                 if(ticket.image && ticket.image.trim() !== '') {
                     imgBtn = `<button onclick="event.stopPropagation(); openImagePopup('${ticket.image}')" class="mt-2 inline-flex items-center text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md border border-blue-100"><i class="fa-regular fa-image mr-1"></i> ดูรูปภาพแนบ</button>`;
