@@ -7,6 +7,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- โหลด Hammer.js สำหรับระบบสัมผัส ถ่างนิ้วซูม -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Prompt', sans-serif; background-color: #f3f4f6; }
@@ -16,6 +18,10 @@
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .ticket-card { cursor: pointer; transition: transform 0.1s, box-shadow 0.1s; }
         .ticket-card:active { transform: scale(0.98); }
+        
+        /* สไตล์สำหรับ Lightbox โชว์รูปภาพแบบไร้ขอบ */
+        #custom-lightbox { touch-action: none; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
+        #lightbox-img { transform-origin: center center; }
     </style>
 </head>
 <body class="text-gray-800 antialiased h-screen flex flex-col overflow-hidden">
@@ -74,6 +80,7 @@
         <!-- Content Area -->
         <main class="flex-1 overflow-y-auto bg-gray-50 p-4 pb-24" id="mainContent">
             
+            <!-- View: แดชบอร์ด (Admin) -->
             <div id="view-dashboard" class="hidden">
                 <div class="grid grid-cols-2 gap-4 mb-6">
                     <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 text-center">
@@ -98,6 +105,7 @@
                 </div>
             </div>
 
+            <!-- View: ฟอร์มแจ้งซ่อม -->
             <div id="view-newTicket" class="hidden">
                 <div class="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
                     <h3 class="font-bold text-gray-800 mb-4 border-b pb-2">สร้างใบแจ้งซ่อมใหม่</h3>
@@ -168,6 +176,7 @@
                 </div>
             </div>
 
+            <!-- View: รายการงาน -->
             <div id="view-ticketList" class="hidden">
                 <div class="flex overflow-x-auto space-x-2 pb-2 mb-4 no-scrollbar">
                     <button onclick="renderTicketList('ทั้งหมด')" class="shrink-0 px-4 py-1.5 bg-gray-800 text-white rounded-full text-sm font-medium">ทั้งหมด</button>
@@ -185,12 +194,39 @@
 
         </main>
 
+        <!-- Bottom Navigation -->
         <nav class="bg-white border-t border-gray-200 shrink-0 fixed bottom-0 w-full z-20 pb-safe">
             <div class="flex justify-around items-center h-16" id="bottomNavContainer"></div>
         </nav>
     </div>
 
+    <!-- ส่วนของ Custom Lightbox (แกลลอรี่ส่วนตัวสำหรับแอป) -->
+    <div id="custom-lightbox" class="fixed inset-0 z-[9999] hidden bg-black/95 flex flex-col transition-opacity duration-300 opacity-0">
+        <!-- ปุ่มปิด -->
+        <div class="absolute top-0 right-0 p-4 z-50">
+            <button onclick="closeLightbox()" class="w-10 h-10 bg-white/20 hover:bg-white/40 rounded-full text-white flex items-center justify-center transition-colors">
+                <i class="fa-solid fa-times text-xl"></i>
+            </button>
+        </div>
+        
+        <!-- พื้นที่แสดงรูปภาพ -->
+        <div id="lightbox-zoom-container" class="flex-1 w-full flex items-center justify-center overflow-hidden">
+            <!-- ไอคอนโหลด -->
+            <div id="lightbox-loader" class="absolute text-white text-4xl"><i class="fa-solid fa-spinner fa-spin"></i></div>
+            <!-- รูปภาพจริง -->
+            <img id="lightbox-img" src="" class="max-w-full max-h-full object-contain hidden" draggable="false">
+        </div>
+        
+        <!-- คำแนะนำการใช้งาน -->
+        <div class="absolute bottom-6 w-full text-center pointer-events-none">
+            <p class="text-white/60 text-xs bg-black/50 inline-block px-4 py-1.5 rounded-full backdrop-blur-md">ถ่างนิ้วเพื่อซูม • เลื่อนดู • แตะ 2 ครั้งเพื่อคืนค่า</p>
+        </div>
+    </div>
+
     <script>
+        // ==========================================
+        // ใส่ URL Web App ที่ได้จาก Google Apps Script ตรงนี้ครับ
+        // ==========================================
         const API_URL = "https://script.google.com/macros/s/AKfycbxQh5Q9yVQHBDvozPaCt_l7WTZMZYudjdHeZ8wAhipiQxcM2UaU4elCFi6xg7Miu-LPoQ/exec";
 
         let currentUser = null;
@@ -198,6 +234,7 @@
         let compressedImageFile = null; 
         let cachedPassword = ''; 
 
+        // ------------------ ระบบเชื่อมต่อ API หลัก ------------------
         async function callAPI(action, payload = {}) {
             try {
                 const requestData = {
@@ -206,33 +243,54 @@
                     password: cachedPassword || document.getElementById('password').value,
                     payload: payload
                 };
-                const response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(requestData) });
+
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(requestData)
+                });
+
                 if (!response.ok) throw new Error('Network response was not ok');
                 return await response.json();
             } catch (error) {
-                return { success: false, message: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้' };
+                console.error('API Error:', error);
+                return { success: false, message: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต' };
             }
         }
 
+        // ------------------ ระบบ Login ------------------
         async function handleLogin(event) {
             event.preventDefault();
+            
+            if (API_URL.includes('ใส่_URL')) {
+                Swal.fire('แจ้งเตือน', 'กรุณาใส่ URL API ในโค้ด Index.html ก่อน', 'warning');
+                return;
+            }
+
             const btn = document.getElementById('loginBtn');
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> กำลังตรวจสอบ...';
             btn.disabled = true;
+
             const res = await callAPI('login');
+            
             btn.innerHTML = 'เข้าสู่ระบบ';
             btn.disabled = false;
+
             if (res.success) {
                 currentUser = res.user;
                 cachedPassword = document.getElementById('password').value; 
+                
                 document.getElementById('displayUserName').textContent = currentUser.name;
                 document.getElementById('displayUserRole').textContent = currentUser.role;
                 setupNavigation();
+                
+                document.getElementById('loginView').classList.remove('flex');
                 document.getElementById('loginView').classList.add('hidden');
                 document.getElementById('appContainer').classList.remove('hidden');
                 document.getElementById('appContainer').classList.add('flex');
+
                 if (currentUser.role === 'Admin') navigate('dashboard');
                 else navigate('ticketList');
+                
                 loadData();
             } else {
                 Swal.fire({ icon: 'error', title: 'ผิดพลาด', text: res.message });
@@ -240,25 +298,31 @@
         }
 
         function logout() {
-            Swal.fire({ title: 'ออกจากระบบ?', icon: 'question', showCancelButton: true }).then((result) => {
-                if (result.isConfirmed) { location.reload(); }
+            Swal.fire({
+                title: 'ออกจากระบบ?', icon: 'question', showCancelButton: true,
+                confirmButtonColor: '#3085d6', cancelButtonColor: '#d33', confirmButtonText: 'ใช่'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    location.reload(); // รีเฟรชหน้าเว็บเพื่อเคลียร์ค่าทั้งหมด
+                }
             })
         }
 
+        // ------------------ ระบบ Navigation ------------------
         function setupNavigation() {
             const nav = document.getElementById('bottomNavContainer');
             if (currentUser.role === 'Admin') {
                 nav.innerHTML = `
-                    <button onclick="navigate('dashboard')" class="nav-btn w-full flex flex-col items-center py-2 nav-item" data-target="dashboard"><i class="fa-solid fa-chart-pie text-xl mb-1"></i><span class="text-[10px]">ภาพรวม</span></button>
-                    <button onclick="navigate('ticketList')" class="nav-btn w-full flex flex-col items-center py-2 nav-item" data-target="ticketList"><i class="fa-solid fa-clipboard-list text-xl mb-1"></i><span class="text-[10px]">งานทั้งหมด</span></button>
-                    <button onclick="navigate('newTicket')" class="nav-btn w-full flex flex-col items-center py-2 nav-item" data-target="newTicket"><div class="bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center -mt-4 shadow-lg border-4 border-white"><i class="fa-solid fa-plus text-lg"></i></div></button>
-                    <button onclick="loadData()" class="nav-btn w-full flex flex-col items-center py-2 nav-item"><i class="fa-solid fa-rotate text-xl mb-1"></i><span class="text-[10px]">รีเฟรช</span></button>
+                    <button onclick="navigate('dashboard')" class="nav-btn w-full flex flex-col items-center justify-center py-2 nav-item" data-target="dashboard"><i class="fa-solid fa-chart-pie text-xl mb-1"></i><span class="text-[10px]">ภาพรวม</span></button>
+                    <button onclick="navigate('ticketList')" class="nav-btn w-full flex flex-col items-center justify-center py-2 nav-item" data-target="ticketList"><i class="fa-solid fa-clipboard-list text-xl mb-1"></i><span class="text-[10px]">งานทั้งหมด</span></button>
+                    <button onclick="navigate('newTicket')" class="nav-btn w-full flex flex-col items-center justify-center py-2 nav-item" data-target="newTicket"><div class="bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center -mt-4 shadow-lg border-4 border-white"><i class="fa-solid fa-plus text-lg"></i></div><span class="text-[10px] mt-1 text-blue-600 font-bold">แจ้งซ่อม</span></button>
+                    <button onclick="loadData()" class="nav-btn w-full flex flex-col items-center justify-center py-2 nav-item"><i class="fa-solid fa-rotate text-xl mb-1"></i><span class="text-[10px]">รีเฟรช</span></button>
                 `;
             } else {
                 nav.innerHTML = `
-                    <button onclick="navigate('newTicket')" class="nav-btn w-full flex flex-col items-center py-2 nav-item" data-target="newTicket"><i class="fa-solid fa-plus-circle text-xl mb-1"></i><span class="text-[10px]">แจ้งซ่อม</span></button>
-                    <button onclick="navigate('ticketList')" class="nav-btn w-full flex flex-col items-center py-2 nav-item" data-target="ticketList"><i class="fa-solid fa-list text-xl mb-1"></i><span class="text-[10px]">รายการของฉัน</span></button>
-                    <button onclick="loadData()" class="nav-btn w-full flex flex-col items-center py-2 nav-item"><i class="fa-solid fa-rotate text-xl mb-1"></i><span class="text-[10px]">รีเฟรช</span></button>
+                    <button onclick="navigate('newTicket')" class="nav-btn w-full flex flex-col items-center justify-center py-2 nav-item" data-target="newTicket"><i class="fa-solid fa-plus-circle text-xl mb-1"></i><span class="text-[10px]">แจ้งซ่อมใหม่</span></button>
+                    <button onclick="navigate('ticketList')" class="nav-btn w-full flex flex-col items-center justify-center py-2 nav-item" data-target="ticketList"><i class="fa-solid fa-list text-xl mb-1"></i><span class="text-[10px]">งานของฉัน</span></button>
+                    <button onclick="loadData()" class="nav-btn w-full flex flex-col items-center justify-center py-2 nav-item"><i class="fa-solid fa-rotate text-xl mb-1"></i><span class="text-[10px]">รีเฟรช</span></button>
                 `;
             }
         }
@@ -269,94 +333,347 @@
             document.getElementById(`view-${viewId}`).classList.remove('hidden');
             const targetBtn = document.querySelector(`.nav-btn[data-target="${viewId}"]`);
             if(targetBtn) targetBtn.classList.add('active');
+            const titles = {'dashboard': 'แดชบอร์ดภาพรวม', 'newTicket': 'ฟอร์มแจ้งซ่อม', 'ticketList': currentUser.role === 'Admin' ? 'จัดการงานทั้งหมด' : 'งานแจ้งซ่อมของฉัน'};
+            document.getElementById('headerTitle').textContent = titles[viewId];
         }
 
-        // ระบบ Lightbox มืออาชีพ (รองรับการซูมและ Android/iOS)
-        function openImagePopup(driveUrl) {
-            if (!driveUrl) return;
-            const match = driveUrl.match(/\/d\/(.+?)\//);
-            const imgId = match ? match[1] : '';
-            const src = imgId ? `https://drive.google.com/thumbnail?id=${imgId}&sz=w1000` : driveUrl;
-
-            Swal.fire({
-                html: `
-                    <div style="width:100%; height:70vh; display:flex; align-items:center; justify-content:center; overflow:hidden;">
-                        <img src="${src}" style="max-width:100%; max-height:100%; object-fit:contain;">
-                    </div>
-                    <p class="text-white text-xs mt-4">แตะที่รูปเพื่อย่อ/ขยาย หรือกดปิดที่มุมขวาบน</p>
-                `,
-                background: 'rgba(0,0,0,0.95)',
-                showConfirmButton: false,
-                showCloseButton: true,
-                width: '100%',
-                padding: '10px'
-            });
-        }
-
+        // ------------------ ระบบ รูปภาพตอนอัปโหลด ------------------
         function previewImage(event) {
             const file = event.target.files[0];
             if(!file) return;
+
             const reader = new FileReader();
+            reader.readAsDataURL(file);
             reader.onload = function(e) {
                 const img = new Image();
                 img.src = e.target.result;
                 img.onload = function() {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 800;
-                    let scale = Math.min(1, MAX_WIDTH / img.width);
-                    canvas.width = img.width * scale;
-                    canvas.height = img.height * scale;
-                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+                    const MAX_WIDTH = 600; 
+                    let scaleSize = 1;
+                    if(img.width > MAX_WIDTH) {
+                        scaleSize = MAX_WIDTH / img.width;
+                    }
+                    canvas.width = img.width * scaleSize;
+                    canvas.height = img.height * scaleSize;
+                    
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.4); 
+                    
                     document.getElementById('uploadBox').classList.add('hidden');
                     document.getElementById('imagePreviewContainer').classList.remove('hidden');
                     document.getElementById('imagePreview').src = dataUrl;
-                    compressedImageFile = { filename: file.name, mimeType: 'image/jpeg', data: dataUrl.split(',')[1] };
+
+                    compressedImageFile = {
+                        filename: file.name || 'captured_image.jpg',
+                        mimeType: 'image/jpeg',
+                        data: dataUrl.split(',')[1] 
+                    };
                 }
             }
-            reader.readAsDataURL(file);
         }
 
         function clearImage() {
+            document.getElementById('tCameraInput').value = '';
+            document.getElementById('tAlbumInput').value = '';
             compressedImageFile = null;
             document.getElementById('uploadBox').classList.remove('hidden');
             document.getElementById('imagePreviewContainer').classList.add('hidden');
         }
 
+        // ------------------ ระบบ Custom Lightbox (แสดงผลรูปภาพมืออาชีพ) ------------------
+        let hammertime = null;
+
+        function openImagePopup(driveUrl) {
+            if (!driveUrl) return;
+            
+            // ดึง ID รูปภาพ และสร้างลิงก์บีบอัดของ Google (โหลดเร็ว ชัดพอดีจอ)
+            let src = driveUrl;
+            const match = driveUrl.match(/\/d\/(.+?)\//);
+            if (match && match[1]) {
+                src = `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1000`;
+            }
+
+            const lightbox = document.getElementById('custom-lightbox');
+            const img = document.getElementById('lightbox-img');
+            const loader = document.getElementById('lightbox-loader');
+
+            // เคลียร์ค่าเก่าทิ้งก่อน
+            img.src = '';
+            img.style.transform = 'translate(0px, 0px) scale(1)';
+            loader.classList.remove('hidden');
+            img.classList.add('hidden');
+
+            // แสดง Lightbox (ค่อยๆ Fade in)
+            lightbox.classList.remove('hidden');
+            setTimeout(() => lightbox.classList.remove('opacity-0'), 10);
+
+            // โหลดรูปเสร็จ ค่อยซ่อนตัวหมุนๆ แล้วแสดงรูป
+            img.onload = () => {
+                loader.classList.add('hidden');
+                img.classList.remove('hidden');
+                setupHammerControls();
+            };
+            img.src = src;
+        }
+
+        function closeLightbox() {
+            const lightbox = document.getElementById('custom-lightbox');
+            // ค่อยๆ Fade out
+            lightbox.classList.add('opacity-0');
+            setTimeout(() => {
+                lightbox.classList.add('hidden');
+                if (hammertime) {
+                    hammertime.destroy();
+                    hammertime = null;
+                }
+            }, 300);
+        }
+
+        // ควบคุมการซูมและเลื่อนด้วย Hammer.js
+        function setupHammerControls() {
+            const container = document.getElementById('lightbox-zoom-container');
+            const img = document.getElementById('lightbox-img');
+
+            if (hammertime) hammertime.destroy();
+            hammertime = new Hammer(container);
+
+            // เปิดใช้งานระบบ หยิก (Pinch) และ ลาก (Pan)
+            hammertime.get('pinch').set({ enable: true });
+            hammertime.get('pan').set({ direction: Hammer.DIRECTION_ALL, threshold: 0 });
+
+            let scale = 1, posX = 0, posY = 0;
+            let lastScale = 1, lastPosX = 0, lastPosY = 0;
+
+            // เมื่อลากนิ้ว
+            hammertime.on('pan', (ev) => {
+                if (scale === 1) return; // ถ้าไม่ได้ซูมอยู่ ไม่ต้องให้ลาก
+                posX = lastPosX + ev.deltaX;
+                posY = lastPosY + ev.deltaY;
+                img.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+            });
+
+            // เมื่อถ่างนิ้ว
+            hammertime.on('pinch', (ev) => {
+                scale = Math.max(1, Math.min(lastScale * ev.scale, 4)); // บังคับให้ซูมได้สูงสุด 4 เท่า และห้ามเล็กกว่าเดิม
+                img.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
+            });
+
+            // เมื่อปล่อยนิ้ว ให้จำค่าล่าสุดไว้
+            hammertime.on('panend pinchend', () => {
+                lastPosX = posX;
+                lastPosY = posY;
+                lastScale = scale;
+            });
+
+            // แตะ 2 ครั้งติดกัน (Double Tap) เพื่อคืนค่าเดิม
+            hammertime.on('doubletap', () => {
+                scale = 1; posX = 0; posY = 0;
+                lastScale = 1; lastPosX = 0; lastPosY = 0;
+                img.style.transition = 'transform 0.2s ease-out';
+                img.style.transform = `translate(0px, 0px) scale(1)`;
+                setTimeout(() => img.style.transition = 'none', 200);
+            });
+        }
+
+        // ------------------ ระบบ Data & แจ้งซ่อม (ผ่าน API) ------------------
         async function loadData() {
             document.getElementById('loadingTickets').classList.remove('hidden');
+            document.getElementById('ticketContainer').innerHTML = '';
+
             const res = await callAPI('getTickets');
+            
             document.getElementById('loadingTickets').classList.add('hidden');
-            if(res.success) { globalTickets = res.data; renderTicketList('ทั้งหมด'); if(currentUser.role === 'Admin') updateDashboard(globalTickets); }
+            if(res.success) {
+                globalTickets = res.data;
+                renderTicketList('ทั้งหมด');
+                if(currentUser.role === 'Admin') updateDashboard(globalTickets);
+            } else { 
+                Swal.fire('ข้อผิดพลาด', res.message, 'error'); 
+            }
         }
 
         async function submitTicket() {
-            const res = await callAPI('saveTicket', { category: document.getElementById('tCategory').value, description: document.getElementById('tDesc').value, priority: document.querySelector('input[name="priority"]:checked').value, imageFile: compressedImageFile });
-            if(res.success) { Swal.fire('สำเร็จ', 'บันทึกงานเรียบร้อย', 'success'); clearImage(); loadData(); navigate('ticketList'); }
+            const category = document.getElementById('tCategory').value;
+            const desc = document.getElementById('tDesc').value;
+            const priority = document.querySelector('input[name="priority"]:checked').value;
+
+            if(!category || !desc) {
+                Swal.fire('ข้อมูลไม่ครบ', 'กรุณาเลือกหมวดหมู่และกรอกรายละเอียด', 'warning');
+                return;
+            }
+
+            const btn = document.getElementById('btnSubmitTicket');
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> กำลังอัปโหลดและบันทึก... (รอสักครู่)';
+            btn.disabled = true;
+
+            const payload = {
+                category: category,
+                description: desc,
+                priority: priority,
+                imageFile: compressedImageFile 
+            };
+
+            const res = await callAPI('saveTicket', payload);
+            
+            btn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i> ส่งแจ้งซ่อม';
+            btn.disabled = false;
+            
+            if(res.success) {
+                Swal.fire({ icon: 'success', title: 'สำเร็จ!', text: `บันทึกงานเลขที่ ${res.ticketId} เรียบร้อย`, timer: 2000, showConfirmButton: false });
+                document.getElementById('tCategory').value = '';
+                document.getElementById('tDesc').value = '';
+                clearImage();
+                loadData(); 
+                navigate('ticketList'); 
+            } else { 
+                Swal.fire('ผิดพลาด', res.message, 'error'); 
+            }
+        }
+
+        // ------------------ ระบบ จัดการงาน (Admin Action ผ่าน API) ------------------
+        function openTicketAction(ticketId) {
+            if(currentUser.role !== 'Admin') return;
+
+            const ticket = globalTickets.find(t => t.ticketId === ticketId);
+            if(!ticket) return;
+
+            Swal.fire({
+                title: `จัดการงาน ${ticket.ticketId}`,
+                html: `
+                    <div class="text-left mt-2">
+                        <p class="text-sm text-gray-500 mb-4"><strong>ปัญหา:</strong> ${ticket.description}</p>
+                        <label class="block text-sm font-medium mb-1">เปลี่ยนสถานะ</label>
+                        <select id="swal-status" class="w-full px-3 py-2 border rounded-lg mb-3 outline-none">
+                            <option value="รอรับงาน" ${ticket.status === 'รอรับงาน' ? 'selected' : ''}>รอรับงาน</option>
+                            <option value="กำลังดำเนินการ" ${ticket.status === 'กำลังดำเนินการ' ? 'selected' : ''}>กำลังดำเนินการ</option>
+                            <option value="เสร็จสิ้น" ${ticket.status === 'เสร็จสิ้น' ? 'selected' : ''}>เสร็จสิ้น</option>
+                        </select>
+                        <label class="block text-sm font-medium mb-1">หมายเหตุช่าง / วิธีแก้ปัญหา</label>
+                        <textarea id="swal-note" rows="2" class="w-full px-3 py-2 border rounded-lg outline-none" placeholder="กรอกข้อมูลเมื่อต้องการปิดงาน...">${ticket.adminNote || ''}</textarea>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'บันทึกการเปลี่ยนแปลง',
+                cancelButtonText: 'ปิด',
+                confirmButtonColor: '#2563eb',
+                preConfirm: () => {
+                    const newStatus = document.getElementById('swal-status').value;
+                    const adminNote = document.getElementById('swal-note').value;
+                    if(newStatus === 'เสร็จสิ้น' && !adminNote.trim()) {
+                        Swal.showValidationMessage('กรุณากรอกวิธีแก้ปัญหาเพื่อเก็บเป็นประวัติ');
+                        return false;
+                    }
+                    return { newStatus, adminNote };
+                }
+            }).then(async (result) => {
+                if(result.isConfirmed) {
+                    Swal.fire({title: 'กำลังอัปเดต...', allowOutsideClick: false, didOpen: () => { Swal.showLoading() }});
+                    
+                    const payload = {
+                        ticketId: ticket.ticketId,
+                        newStatus: result.value.newStatus,
+                        adminNote: result.value.adminNote
+                    };
+
+                    const res = await callAPI('updateTicket', payload);
+                    
+                    if(res.success) {
+                        Swal.fire('สำเร็จ', 'อัปเดตสถานะงานเรียบร้อย', 'success');
+                        loadData(); 
+                    } else { 
+                        Swal.fire('ผิดพลาด', res.message, 'error'); 
+                    }
+                }
+            });
+        }
+
+        // ------------------ Render UI ------------------
+        function getStatusColor(status) {
+            if(status === 'รอรับงาน') return 'bg-red-100 text-red-600';
+            if(status === 'กำลังดำเนินการ') return 'bg-yellow-100 text-yellow-700';
+            if(status === 'เสร็จสิ้น') return 'bg-green-100 text-green-700';
+            return 'bg-gray-100 text-gray-600';
         }
 
         function renderTicketList(filterStatus) {
             const container = document.getElementById('ticketContainer');
             container.innerHTML = '';
-            let filtered = filterStatus === 'ทั้งหมด' ? globalTickets : globalTickets.filter(t => t.status === filterStatus);
+            let filtered = globalTickets;
+            if(filterStatus !== 'ทั้งหมด') filtered = globalTickets.filter(t => t.status === filterStatus);
+
+            if(filtered.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-400 py-10">ไม่มีรายการแจ้งซ่อม</p>';
+                return;
+            }
+
             filtered.forEach(ticket => {
-                const imgBtn = ticket.image ? `<button onclick="openImagePopup('${ticket.image}')" class="mt-2 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100"><i class="fa-regular fa-image mr-1"></i> ดูรูปภาพ</button>` : '';
+                const colorClass = getStatusColor(ticket.status);
+                const isUrgent = ticket.priority === 'ด่วนมาก' ? '<span class="text-[10px] ml-2 font-bold text-white bg-red-500 px-2 py-0.5 rounded">ด่วนมาก</span>' : '';
+                
+                let dateStr = ticket.date;
+                if (typeof dateStr === 'string' && dateStr.includes('T')) {
+                    const d = new Date(dateStr);
+                    dateStr = d.toLocaleDateString('th-TH') + ' ' + d.toLocaleTimeString('th-TH').substring(0,5);
+                }
+
+                let imgBtn = '';
+                if(ticket.image && ticket.image.trim() !== '') {
+                    // เรียกใช้ฟังก์ชัน Custom Lightbox ของเราแทน
+                    imgBtn = `<button onclick="event.stopPropagation(); openImagePopup('${ticket.image}')" class="mt-2 inline-flex items-center text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md border border-blue-100"><i class="fa-regular fa-image mr-1"></i> ดูรูปภาพแนบ</button>`;
+                }
+
+                const cardHover = currentUser.role === 'Admin' ? 'ticket-card hover:bg-gray-50 border-l-4 border-l-blue-500' : '';
+                const clickAction = currentUser.role === 'Admin' ? `onclick="openTicketAction('${ticket.ticketId}')"` : '';
+
                 container.innerHTML += `
-                    <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-3" onclick="if(currentUser.role==='Admin') openTicketAction('${ticket.ticketId}')">
-                        <div class="flex justify-between">
-                            <span class="text-xs font-bold text-gray-500">${ticket.ticketId}</span>
-                            <span class="text-xs font-bold px-2 py-1 rounded-lg ${getStatusColor(ticket.status)}">${ticket.status}</span>
+                    <div class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-3 ${cardHover}" ${clickAction}>
+                        <div class="flex justify-between items-start mb-2">
+                            <div><span class="text-xs font-bold text-gray-500 border border-gray-200 px-2 py-1 rounded-lg">${ticket.ticketId}</span>${isUrgent}</div>
+                            <span class="text-xs font-bold ${colorClass} px-2 py-1 rounded-lg">${ticket.status}</span>
                         </div>
-                        <h3 class="font-bold my-1">${ticket.category}</h3>
-                        <p class="text-sm text-gray-600">${ticket.description}</p>
+                        <h3 class="font-bold text-gray-800 mb-1">[${ticket.category}]</h3>
+                        <p class="text-sm text-gray-600 mb-1 whitespace-pre-wrap line-clamp-2">${ticket.description}</p>
                         ${imgBtn}
+                        ${ticket.adminNote ? `<div class="mt-2 bg-gray-50 p-2 rounded text-xs border-l-2 border-green-500 text-gray-600"><strong>ช่างตอบกลับ:</strong> ${ticket.adminNote}</div>` : ''}
+                        <div class="flex justify-between items-center text-xs text-gray-400 border-t pt-2 mt-2 border-gray-50">
+                            <span><i class="fa-regular fa-clock mr-1"></i> ${dateStr}</span>
+                            <span>👤 ${ticket.name}</span>
+                        </div>
+                        ${currentUser.role === 'Admin' && ticket.status !== 'เสร็จสิ้น' ? '<div class="text-right mt-2 text-[10px] text-blue-400"><i class="fa-solid fa-hand-pointer mr-1"></i>แตะเพื่ออัปเดตงาน</div>' : ''}
                     </div>
                 `;
             });
         }
 
-        function getStatusColor(status) { return status === 'เสร็จสิ้น' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'; }
-        function updateDashboard(tickets) { /* อัปเดตตัวเลขหน้าแดชบอร์ดตามโค้ดเดิม */ }
+        function updateDashboard(tickets) {
+            let wait = 0, prog = 0, done = 0;
+            let urgentHTML = '';
+
+            tickets.forEach(t => {
+                if(t.status === 'รอรับงาน') wait++;
+                if(t.status === 'กำลังดำเนินการ') prog++;
+                if(t.status === 'เสร็จสิ้น') done++;
+
+                if(t.priority === 'ด่วนมาก' && t.status === 'รอรับงาน') {
+                    urgentHTML += `
+                        <div class="p-3 bg-red-50 rounded-xl mb-2 border border-red-100 cursor-pointer hover:bg-red-100" onclick="openTicketAction('${t.ticketId}')">
+                            <span class="text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded">${t.category}</span>
+                            <p class="text-sm text-gray-700 mt-1 font-medium">${t.description}</p>
+                            <p class="text-[10px] text-gray-500 mt-1">แจ้งโดย: ${t.name} | ${t.ticketId}</p>
+                        </div>
+                    `;
+                }
+            });
+
+            document.getElementById('dashWaiting').textContent = wait;
+            document.getElementById('dashInProgress').textContent = prog;
+            document.getElementById('dashCompleted').textContent = done;
+            
+            const urgContainer = document.getElementById('urgentContainer');
+            urgContainer.innerHTML = urgentHTML !== '' ? urgentHTML : '<p class="text-sm text-gray-400 text-center py-2">ไม่มีงานด่วนค้าง</p>';
+        }
     </script>
 </body>
 </html>
