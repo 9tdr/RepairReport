@@ -198,7 +198,7 @@
         // ==========================================
         // ส้มส้ม เอา URL ใหม่ที่ได้จาก New Deployment (ลงท้ายด้วย /exec) มาวางตรงนี้นะครับ
         // ==========================================
-        const API_URL = "https://script.google.com/macros/s/AKfycbxq52FSylrKVGMFh2LrKfDPk2PwLbCUUTbC5vAy5YegPjSl_mSY1TXmZgRsS1A7kQSsoA/exec";
+        const API_URL = "https://script.google.com/macros/s/AKfycbzYJ0d8ZIj5h7Zja0FVZxD_JgO-0OAFMN2HGncUmENllg3fcQCJZT3WeJtkhbXcIO7ofA/exec";
 
         let currentUser = null;
         let globalTickets = []; 
@@ -224,7 +224,7 @@
                 return await response.json();
             } catch (error) {
                 console.error('API Error:', error);
-                return { success: false, message: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบ URL API' };
+                return { success: false, message: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต' };
             }
         }
 
@@ -233,7 +233,7 @@
             event.preventDefault();
             
             if (API_URL.includes('ใส่_URL')) {
-                Swal.fire('แจ้งเตือน', 'กรุณาใส่ URL API ในโค้ดก่อนใช้งาน', 'warning');
+                Swal.fire('แจ้งเตือน', 'กรุณาใส่ URL API ในโค้ด Index.html ก่อน', 'warning');
                 return;
             }
 
@@ -316,7 +316,7 @@
             document.getElementById('headerTitle').textContent = titles[viewId];
         }
 
-        // ------------------ ระบบ รูปภาพ (บีบอัด Client-side) ------------------
+        // ------------------ ระบบ รูปภาพ (Optimized Compression) ------------------
         function previewImage(event) {
             const file = event.target.files[0];
             if(!file) return;
@@ -328,14 +328,21 @@
                 img.src = e.target.result;
                 img.onload = function() {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 800; 
-                    const scaleSize = MAX_WIDTH / img.width;
-                    canvas.width = MAX_WIDTH;
+                    
+                    // ปรับแต่ง Performance 1: ลดขนาดเหลือ 600px 
+                    const MAX_WIDTH = 600; 
+                    let scaleSize = 1;
+                    if(img.width > MAX_WIDTH) {
+                        scaleSize = MAX_WIDTH / img.width;
+                    }
+                    canvas.width = img.width * scaleSize;
                     canvas.height = img.height * scaleSize;
                     
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.6); 
+                    
+                    // ปรับแต่ง Performance 2: ลดคุณภาพเหลือ 40% (ไฟล์จะเบาลงมาก)
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.4); 
                     
                     document.getElementById('uploadBox').classList.add('hidden');
                     document.getElementById('imagePreviewContainer').classList.remove('hidden');
@@ -386,7 +393,8 @@
             }
 
             const btn = document.getElementById('btnSubmitTicket');
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> กำลังบันทึก...';
+            // ปรับแต่ง Performance 3: เปลี่ยนข้อความตอนกด เพื่อไม่ให้ผู้ใช้รู้สึกว่าเครื่องค้าง
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> กำลังอัปโหลดและบันทึก... (รอสักครู่)';
             btn.disabled = true;
 
             const payload = {
@@ -402,7 +410,7 @@
             btn.disabled = false;
             
             if(res.success) {
-                Swal.fire('สำเร็จ!', `บันทึกงานเลขที่ ${res.ticketId} เรียบร้อย`, 'success');
+                Swal.fire({ icon: 'success', title: 'สำเร็จ!', text: `บันทึกงานเลขที่ ${res.ticketId} เรียบร้อย`, timer: 2000, showConfirmButton: false });
                 document.getElementById('tCategory').value = '';
                 document.getElementById('tDesc').value = '';
                 clearImage();
