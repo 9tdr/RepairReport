@@ -195,16 +195,17 @@
     </div>
 
     <script>
-        // กำหนด URL ของ API ที่ดึงมาจาก Google Apps Script
-        const API_URL = 'https://script.google.com/macros/s/AKfycbxQh5Q9yVQHBDvozPaCt_l7WTZMZYudjdHeZ8wAhipiQxcM2UaU4elCFi6xg7Miu-LPoQ/exec';
+        // ==========================================
+        // ส้มส้ม เอา URL ใหม่ที่ได้จาก New Deployment (ลงท้ายด้วย /exec) มาวางตรงนี้นะครับ
+        // ==========================================
+        const API_URL = "https://script.google.com/macros/s/AKfycbxq52FSylrKVGMFh2LrKfDPk2PwLbCUUTbC5vAy5YegPjSl_mSY1TXmZgRsS1A7kQSsoA/exec";
 
         let currentUser = null;
         let globalTickets = []; 
         let compressedImageFile = null; 
-        let cachedPassword = ''; // เก็บไว้ใช้แนบส่ง API ยืนยันตัวตนทุกครั้ง
+        let cachedPassword = ''; 
 
         // ------------------ ระบบเชื่อมต่อ API หลัก ------------------
-        // ฟังก์ชันนี้จะทำหน้าที่ยิงข้อมูลไปหา GAS แทน google.script.run ตัวเก่า
         async function callAPI(action, payload = {}) {
             try {
                 const requestData = {
@@ -217,20 +218,25 @@
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     body: JSON.stringify(requestData)
-                    // ไม่ใส่ Header Content-Type เพื่อหลบเลี่ยงปัญหา CORS Preflight
                 });
 
                 if (!response.ok) throw new Error('Network response was not ok');
                 return await response.json();
             } catch (error) {
                 console.error('API Error:', error);
-                return { success: false, message: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ (' + error.message + ')' };
+                return { success: false, message: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ กรุณาตรวจสอบ URL API' };
             }
         }
 
         // ------------------ ระบบ Login ------------------
         async function handleLogin(event) {
             event.preventDefault();
+            
+            if (API_URL.includes('ใส่_URL')) {
+                Swal.fire('แจ้งเตือน', 'กรุณาใส่ URL API ในโค้ดก่อนใช้งาน', 'warning');
+                return;
+            }
+
             const btn = document.getElementById('loginBtn');
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> กำลังตรวจสอบ...';
             btn.disabled = true;
@@ -242,7 +248,7 @@
 
             if (res.success) {
                 currentUser = res.user;
-                cachedPassword = document.getElementById('password').value; // เก็บไว้ยืนยันตัวตนรอบหลัง
+                cachedPassword = document.getElementById('password').value; 
                 
                 document.getElementById('displayUserName').textContent = currentUser.name;
                 document.getElementById('displayUserRole').textContent = currentUser.role;
@@ -487,7 +493,6 @@
                 const colorClass = getStatusColor(ticket.status);
                 const isUrgent = ticket.priority === 'ด่วนมาก' ? '<span class="text-[10px] ml-2 font-bold text-white bg-red-500 px-2 py-0.5 rounded">ด่วนมาก</span>' : '';
                 
-                // แก้ไขการแสดงวันที่ให้รองรับ String ที่ส่งมาจาก API
                 let dateStr = ticket.date;
                 if (typeof dateStr === 'string' && dateStr.includes('T')) {
                     const d = new Date(dateStr);
