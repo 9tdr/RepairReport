@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="th">
 <head>
@@ -196,10 +195,7 @@
     </div>
 
     <script>
-        // ==========================================
-        // ส้มส้ม เอา URL ใหม่ที่ได้จาก New Deployment (ลงท้ายด้วย /exec) มาวางตรงนี้นะครับ
-        // ==========================================
-        const API_URL = "https://script.google.com/macros/s/AKfycbyjXJYkdFkuI-mExidjllUoB1YdYEhysdDgUxPv7ROnvDgF2REN83tAXCAFyTLTfpVU7w/exec";
+        const API_URL = 'https://script.google.com/macros/s/AKfycbxQh5Q9yVQHBDvozPaCt_l7WTZMZYudjdHeZ8wAhipiQxcM2UaU4elCFi6xg7Miu-LPoQ/exec';
 
         let currentUser = null;
         let globalTickets = []; 
@@ -232,11 +228,6 @@
         // ------------------ ระบบ Login ------------------
         async function handleLogin(event) {
             event.preventDefault();
-            
-            if (API_URL.includes('ใส่_URL')) {
-                Swal.fire('แจ้งเตือน', 'กรุณาใส่ URL API ในโค้ด Index.html ก่อน', 'warning');
-                return;
-            }
 
             const btn = document.getElementById('loginBtn');
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> กำลังตรวจสอบ...';
@@ -317,7 +308,7 @@
             document.getElementById('headerTitle').textContent = titles[viewId];
         }
 
-        // ------------------ ระบบ รูปภาพ (Optimized Compression) ------------------
+        // ------------------ ระบบ รูปภาพ ------------------
         function previewImage(event) {
             const file = event.target.files[0];
             if(!file) return;
@@ -329,8 +320,6 @@
                 img.src = e.target.result;
                 img.onload = function() {
                     const canvas = document.createElement('canvas');
-                    
-                    // ปรับแต่ง Performance 1: ลดขนาดเหลือ 600px 
                     const MAX_WIDTH = 600; 
                     let scaleSize = 1;
                     if(img.width > MAX_WIDTH) {
@@ -341,8 +330,6 @@
                     
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    
-                    // ปรับแต่ง Performance 2: ลดคุณภาพเหลือ 40% (ไฟล์จะเบาลงมาก)
                     const dataUrl = canvas.toDataURL('image/jpeg', 0.4); 
                     
                     document.getElementById('uploadBox').classList.add('hidden');
@@ -364,6 +351,32 @@
             compressedImageFile = null;
             document.getElementById('uploadBox').classList.remove('hidden');
             document.getElementById('imagePreviewContainer').classList.add('hidden');
+        }
+
+        // [BUG FIX] ฟังก์ชันแปลงลิงก์หน้าเว็บให้เป็นลิงก์รูปภาพสายตรง (Direct Link) และเปิด Popup ภายในแอป
+        function openImagePopup(driveUrl) {
+            if (!driveUrl) return;
+            
+            // ดึงเฉพาะ ID ของรูปภาพออกมาจากลิงก์
+            let directUrl = driveUrl;
+            const match = driveUrl.match(/\/d\/(.+?)\//);
+            if (match && match[1]) {
+                // แปลงเป็นลิงก์สายตรงเพื่อหลีกเลี่ยงการเด้งเข้าหน้า Login ของ Google
+                directUrl = `https://drive.google.com/uc?export=view&id=${match[1]}`;
+            }
+
+            // แสดงรูปในแอปโดยใช้ SweetAlert ไม่ต้องเปิดแท็บใหม่
+            Swal.fire({
+                imageUrl: directUrl,
+                imageAlt: 'ภาพประกอบแจ้งซ่อม',
+                width: '90%',
+                padding: '1em',
+                showConfirmButton: false,
+                showCloseButton: true,
+                customClass: {
+                    image: 'rounded-xl max-h-[70vh] object-contain shadow-sm'
+                }
+            });
         }
 
         // ------------------ ระบบ Data & แจ้งซ่อม (ผ่าน API) ------------------
@@ -394,7 +407,6 @@
             }
 
             const btn = document.getElementById('btnSubmitTicket');
-            // ปรับแต่ง Performance 3: เปลี่ยนข้อความตอนกด เพื่อไม่ให้ผู้ใช้รู้สึกว่าเครื่องค้าง
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> กำลังอัปโหลดและบันทึก... (รอสักครู่)';
             btn.disabled = true;
 
@@ -508,9 +520,10 @@
                     dateStr = d.toLocaleDateString('th-TH') + ' ' + d.toLocaleTimeString('th-TH').substring(0,5);
                 }
 
+                // [BUG FIX] เปลี่ยนปุ่มให้ทำงานในแอปแทนการเปิดลิงก์ใหม่
                 let imgBtn = '';
                 if(ticket.image && ticket.image.trim() !== '') {
-                    imgBtn = `<a href="${ticket.image}" target="_blank" onclick="event.stopPropagation()" class="mt-2 inline-flex items-center text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md border border-blue-100"><i class="fa-regular fa-image mr-1"></i> ดูรูปภาพแนบ</a>`;
+                    imgBtn = `<button onclick="event.stopPropagation(); openImagePopup('${ticket.image}')" class="mt-2 inline-flex items-center text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-md border border-blue-100"><i class="fa-regular fa-image mr-1"></i> ดูรูปภาพแนบ</button>`;
                 }
 
                 const cardHover = currentUser.role === 'Admin' ? 'ticket-card hover:bg-gray-50 border-l-4 border-l-blue-500' : '';
